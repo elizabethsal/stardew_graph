@@ -1,50 +1,87 @@
-import { useRef, type FormEvent } from "react";
+import {useRef} from "react";
 
 export function APITester() {
-  const responseInputRef = useRef<HTMLTextAreaElement>(null);
+    const responseInputRef = useRef<HTMLTextAreaElement>(null);
 
-  const testEndpoint = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    try {
-      const form = e.currentTarget;
-      const formData = new FormData(form);
-      const endpoint = formData.get("endpoint") as string;
-      const url = new URL(endpoint, location.href);
-      const method = formData.get("method") as string;
-      const res = await fetch(url, { method });
-
-      const data: unknown = await res.json();
-      responseInputRef.current!.value = JSON.stringify(data, null, 2);
-    } catch (error) {
-      responseInputRef.current!.value = String(error);
+    interface RecordData {
+        pageid: number;
+        title: string;
     }
-  };
 
-  return (
-    <div className="api-tester">
-      <form onSubmit={testEndpoint} className="endpoint-row">
-        <select name="method" className="method">
-          <option value="GET">GET</option>
-          <option value="PUT">PUT</option>
-        </select>
-        <input
-          type="text"
-          name="endpoint"
-          defaultValue="/api/hello"
-          className="url-input"
-          placeholder="/api/hello"
-        />
-        <button type="submit" className="send-button">
-          Send
-        </button>
-      </form>
-      <textarea
-        ref={responseInputRef}
-        readOnly
-        placeholder="Response will appear here..."
-        className="response-area"
-      />
-    </div>
-  );
+    interface WikiResponse {
+        query: {
+            allpages: RecordData[];
+        };
+        continue?: {
+            apcontinue: string;
+            continue: string;
+        };
+    }
+
+    async function getAll(): Promise<RecordData[]> {
+        let allRecords: RecordData[] = [];
+        let apcontinue: string | undefined;
+
+        try {
+            do {
+                const params = new URLSearchParams({
+                    action: 'query',
+                    list: 'allpages',
+                    aplimit: '500',
+                    format: 'json',
+                    formatversion: '2',
+                    origin: '*',
+                });
+
+                if (apcontinue) {
+                    params.set('apcontinue', apcontinue);
+                }
+
+                const url =
+                    `https://stardewvalleywiki.com/mediawiki/api.php?${params}`;
+
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    throw new Error(
+                        `HTTP Error: ${response.status}`
+                    );
+                }
+
+                const data: WikiResponse = await response.json();
+
+                allRecords.push(...data.query.allpages);
+
+                apcontinue = data.continue?.apcontinue;
+
+                console.log(
+                    `Downloaded: ${allRecords.length} pages`
+                );
+
+            } while (apcontinue);
+
+        } catch (error) {
+            console.error('Download error:', error);
+        }
+
+        console.log(
+            `Download completed: ${allRecords.length} pages`
+        );
+
+        return allRecords;
+    }
+
+    return (
+        <div className="api-tester">
+            <button onClick={getAll} type="submit" className="send-button">
+                Get All topics
+            </button>
+            <textarea
+                ref={responseInputRef}
+                readOnly
+                placeholder="Response will appear here..."
+                className="response-area"
+            />
+        </div>
+    );
 }
